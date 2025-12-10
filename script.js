@@ -31,12 +31,21 @@ async function fetchAV(functionName, symbol) {
 }
 
 // ---------- Financial Modeling Prep fetch ----------
-async function fetchFMP(symbol) {
+async function fetchFMPIncome(symbol) {
   const url = `${FMP_BASE}/income-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`;
   const res = await fetch(url);
   return res.json();
 }
-
+async function fetchFMPBalance(symbol) {
+  const url = `${FMP_BASE}/balance-sheet-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`;
+  const res = await fetch(url);
+  return res.json();
+}
+async function fetchFMPCash(symbol) {
+  const url = `${FMP_BASE}/cash-flow-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`;
+  const res = await fetch(url);
+  return res.json();
+}
 async function fetchFMPProfile(symbol) {
   const url = `${FMP_BASE}/profile/${symbol}?apikey=${FMP_API_KEY}`;
   const res = await fetch(url);
@@ -117,29 +126,39 @@ async function fetchFinancialData(symbol, source) {
     combined = await parseAVData(income, balance, cash);
     document.getElementById("companyName").textContent = `Source: Alpha Vantage (${symbol})`;
   } else if (source === "fmp") {
-    const reports = await fetchFMP(symbol);
-    const profile = await fetchFMPProfile(symbol);
-    combined = reports.map(r => ({
+    const [income, balance, cash, profile] = await Promise.all([
+      fetchFMPIncome(symbol),
+      fetchFMPBalance(symbol),
+      fetchFMPCash(symbol),
+      fetchFMPProfile(symbol)
+    ]);
+
+    combined = income.map((r, idx) => ({
       year: r.date.slice(0,4),
       revenue: parseNumber(r.revenue),
       ebitda: parseNumber(r.ebitda),
       pat: parseNumber(r.netIncome),
-      ocf: parseNumber(r.operatingCashFlow),
-      fcf: parseNumber(r.freeCashFlow),
-      ar: parseNumber(r.receivables),
-      cash: parseNumber(r.cashAndCashEquivalents),
-      equity: parseNumber(r.totalStockholdersEquity),
-      debt: parseNumber(r.totalDebt),
-      invAdv: parseNumber(r.otherInvestments),
-      dividend: parseNumber(r.dividendsPaid),
-      inventory: parseNumber(r.inventory),
-      payables: parseNumber(r.accountPayables)
+      ocf: parseNumber(cash[idx]?.operatingCashFlow),
+      fcf: parseNumber(cash[idx]?.freeCashFlow),
+      ar: parseNumber(balance[idx]?.receivables),
+      cash: parseNumber(balance[idx]?.cashAndCashEquivalents),
+      equity: parseNumber(balance[idx]?.totalStockholdersEquity),
+      debt: parseNumber(balance[idx]?.totalDebt),
+      invAdv: parseNumber(balance[idx]?.otherInvestments),
+      dividend: parseNumber(cash[idx]?.dividendsPaid),
+      inventory: parseNumber(balance[idx]?.inventory),
+      payables: parseNumber(balance[idx]?.accountPayables)
     }));
+
     if (profile && profile[0]) {
       document.getElementById("companyName").textContent = `${profile[0].companyName} (${symbol})`;
     } else {
       document.getElementById("companyName").textContent = `Source: FMP (${symbol})`;
     }
+  }
+
+  if (!combined.length) {
+    throw new Error(`No financial data returned from ${source === "av" ? "Alpha Vantage" : "FMP"}`);
   }
 
   // Fill table
@@ -178,17 +197,4 @@ function initThemeToggle() {
 document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
 
-  const searchBtn = document.getElementById("searchBtn");
-  const tickerInput = document.getElementById("ticker");
-  const sourceSelect = document.getElementById("sourceSelect");
-
-  searchBtn.addEventListener("click", async () => {
-    const ticker = tickerInput.value.trim();
-    const source = sourceSelect.value;
-    if (!ticker) return;
-    searchBtn.disabled = true;
-    searchBtn.textContent = "Loading...";
-    try {
-      await fetchFinancialData(ticker, source);
-    } catch (err) {
-      console.error("Error fetching data:", err
+  const search
