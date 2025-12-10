@@ -1,91 +1,3 @@
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Financial Correlation Analyzer - Investmentor</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Financial Correlation Analyzer</h1>
-            <p>5-Year Financial Health & Investor Readiness Assessment</p>
-        </header>
-
-        <div class="main-content">
-            <section class="input-section">
-                <h2>Search & Analyze</h2>
-                <div class="search-box">
-                    <input 
-                        type="text" 
-                        id="tickerInput" 
-                        placeholder="Enter ticker symbol (e.g., MSFT, AAPL, TCS, RELIANCE)"
-                        class="ticker-input"
-                    >
-                    <button onclick="searchTicker()" class="btn-primary">Analyze</button>
-                    <span class="loading" id="loading" style="display:none;">Loading...</span>
-                </div>
-                <div id="errorMessage" class="error-message" style="display:none;"></div>
-            </section>
-
-            <section class="results-section" id="resultsSection" style="display:none;">
-                <div class="company-info">
-                    <h2 id="companyName"></h2>
-                    <p id="companyPeriod"></p>
-                </div>
-
-                <!-- Tabs Navigation -->
-                <div class="tabs">
-                    <button class="tab-button active" onclick="switchTab('metrics')">Derived Metrics</button>
-                    <button class="tab-button" onclick="switchTab('anomalies')">Anomaly Flags</button>
-                    <button class="tab-button" onclick="switchTab('bridge')">Variance Bridge</button>
-                    <button class="tab-button" onclick="switchTab('ir-notes')">Investor Notes</button>
-                    <button class="tab-button" onclick="downloadExcel()">📥 Export Excel</button>
-                </div>
-
-                <!-- Tab Contents -->
-                <div class="tab-content">
-                    <!-- Metrics Tab -->
-                    <div id="metrics" class="tab-pane active">
-                        <h3>Key Financial Metrics</h3>
-                        <div class="metrics-grid" id="metricsGrid"></div>
-                        <canvas id="metricsChart" style="margin-top:30px;"></canvas>
-                    </div>
-
-                    <!-- Anomalies Tab -->
-                    <div id="anomalies" class="tab-pane" style="display:none;">
-                        <h3>Financial Anomalies Detected</h3>
-                        <div class="anomalies-list" id="anomaliesList"></div>
-                    </div>
-
-                    <!-- Bridge Tab -->
-                    <div id="bridge" class="tab-pane" style="display:none;">
-                        <h3>YoY Variance Analysis</h3>
-                        <canvas id="varianceChart"></canvas>
-                        <div class="variance-insights" id="varianceInsights" style="margin-top:30px;"></div>
-                    </div>
-
-                    <!-- IR Notes Tab -->
-                    <div id="ir-notes" class="tab-pane" style="display:none;">
-                        <h3>Investor Relations Summary</h3>
-                        <div class="ir-notes" id="irNotes"></div>
-                    </div>
-                </div>
-            </section>
-        </div>
-
-        <footer>
-            <p>Investmentor | Financial Analysis Platform | Data powered by yfinance</p>
-        </footer>
-    </div>
-
-    <script src="app.js"></script>
-</body>
-</html>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,17 +5,26 @@
   <title>5-Year Financial Correlation Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css" />
-  <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="light">
   <header class="app-header">
     <h1>5-Year Financial Correlation Dashboard</h1>
     <div class="header-controls">
-      <div class="ticker-input">
-        <label for="ticker">Enter Ticker Symbol</label>
-        <input type="text" id="ticker" value="NEWGEN" />
-        <button id="searchBtn">Search</button>
+      <div class="left-controls">
+        <div class="ticker-input">
+          <label for="ticker">Enter Ticker Symbol</label>
+          <input type="text" id="ticker" value="AAPL" />
+          <label for="providerSelect">Data Source</label>
+          <select id="providerSelect">
+            <option value="alphavantage">Alpha Vantage</option>
+            <option value="fmp">Financial Modeling Prep</option>
+          </select>
+          <button id="searchBtn">Search</button>
+        </div>
+        <div class="company-info">
+          <span id="companyName">Company: -</span>
+        </div>
       </div>
       <div class="mode-toggle">
         <span>Dark Mode</span>
