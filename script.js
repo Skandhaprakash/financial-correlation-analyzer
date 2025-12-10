@@ -195,4 +195,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
 
   const searchBtn = document.getElementById("searchBtn");
-  const tickerInput = document
+  const tickerInput = document.getElementById("ticker");
+  const sourceSelect = document.getElementById("sourceSelect");
+
+  searchBtn.addEventListener("click", async () => {
+    const ticker = tickerInput.value.trim();
+    const source = source
