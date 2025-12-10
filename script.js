@@ -27,28 +27,25 @@ function getFinancialRows() {
 async function fetchAV(functionName, symbol) {
   const url = `${AV_BASE}?function=${functionName}&symbol=${symbol}&apikey=${AV_API_KEY}`;
   const res = await fetch(url);
+  if (!res.ok) throw new Error(`Alpha Vantage HTTP ${res.status}`);
   return res.json();
 }
 
 // ---------- Financial Modeling Prep fetch ----------
 async function fetchFMPIncome(symbol) {
-  const url = `${FMP_BASE}/income-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`;
-  const res = await fetch(url);
+  const res = await fetch(`${FMP_BASE}/income-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`);
   return res.json();
 }
 async function fetchFMPBalance(symbol) {
-  const url = `${FMP_BASE}/balance-sheet-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`;
-  const res = await fetch(url);
+  const res = await fetch(`${FMP_BASE}/balance-sheet-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`);
   return res.json();
 }
 async function fetchFMPCash(symbol) {
-  const url = `${FMP_BASE}/cash-flow-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`;
-  const res = await fetch(url);
+  const res = await fetch(`${FMP_BASE}/cash-flow-statement/${symbol}?limit=5&apikey=${FMP_API_KEY}`);
   return res.json();
 }
 async function fetchFMPProfile(symbol) {
-  const url = `${FMP_BASE}/profile/${symbol}?apikey=${FMP_API_KEY}`;
-  const res = await fetch(url);
+  const res = await fetch(`${FMP_BASE}/profile/${symbol}?apikey=${FMP_API_KEY}`);
   return res.json();
 }
 
@@ -158,7 +155,7 @@ async function fetchFinancialData(symbol, source) {
   }
 
   if (!combined.length) {
-    throw new Error(`No financial data returned from ${source === "av" ? "Alpha Vantage" : "FMP"}`);
+    throw new Error(`No financial data returned from ${source}`);
   }
 
   // Fill table
@@ -197,4 +194,5 @@ function initThemeToggle() {
 document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
 
-  const search
+  const searchBtn = document.getElementById("searchBtn");
+  const tickerInput = document
