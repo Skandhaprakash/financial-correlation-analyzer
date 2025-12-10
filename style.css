@@ -57,13 +57,21 @@ body.dark {
   gap: 0.75rem;
 }
 
+.left-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
 .ticker-input {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
 
-.ticker-input input {
+.ticker-input input,
+.ticker-input select {
   padding: 0.4rem 0.6rem;
   border-radius: 4px;
   border: 1px solid var(--border);
@@ -84,6 +92,11 @@ body.dark {
 .ticker-input button:hover,
 .action-buttons button:hover {
   background-color: #2563eb;
+}
+
+.company-info {
+  font-size: 0.85rem;
+  opacity: 0.9;
 }
 
 .mode-toggle {
