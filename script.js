@@ -55,6 +55,7 @@ async function parseAVData(incomeJson, balanceJson, cashJson) {
     return yearsMap.get(year);
   }
 
+  // Income
   incomeReports.slice(0, 5).forEach(r => {
     const year = r.fiscalDateEnding?.slice(0, 4);
     if (!year) return;
@@ -66,6 +67,7 @@ async function parseAVData(incomeJson, balanceJson, cashJson) {
     y.pat = parseNumber(r.netIncome);
   });
 
+  // Balance
   balanceReports.slice(0, 5).forEach(r => {
     const year = r.fiscalDateEnding?.slice(0, 4);
     if (!year) return;
@@ -85,6 +87,7 @@ async function parseAVData(incomeJson, balanceJson, cashJson) {
     y.payables = parseNumber(r.currentAccountsPayable);
   });
 
+  // Cash flow
   cashReports.slice(0, 5).forEach(r => {
     const year = r.fiscalDateEnding?.slice(0, 4);
     if (!year) return;
@@ -154,3 +157,38 @@ async function fetchFinancialData(symbol, source) {
     setCell(targetRow, 6, y.ar ?? "");
     setCell(targetRow, 7, y.cash ?? "");
     setCell(targetRow, 8, y.equity ?? "");
+    setCell(targetRow, 9, y.debt ?? "");
+    setCell(targetRow, 10, y.invAdv ?? "");
+    setCell(targetRow, 11, y.dividend ?? "");
+    setCell(targetRow, 12, y.inventory ?? "");
+    setCell(targetRow, 13, y.payables ?? "");
+  });
+}
+
+// ---------- Theme toggle ----------
+function initThemeToggle() {
+  const toggle = document.getElementById("modeToggle");
+  toggle.addEventListener("change", () => {
+    document.body.classList.toggle("dark", toggle.checked);
+    document.body.classList.toggle("light", !toggle.checked);
+  });
+}
+
+// ---------- Event wiring ----------
+document.addEventListener("DOMContentLoaded", () => {
+  initThemeToggle();
+
+  const searchBtn = document.getElementById("searchBtn");
+  const tickerInput = document.getElementById("ticker");
+  const sourceSelect = document.getElementById("sourceSelect");
+
+  searchBtn.addEventListener("click", async () => {
+    const ticker = tickerInput.value.trim();
+    const source = sourceSelect.value;
+    if (!ticker) return;
+    searchBtn.disabled = true;
+    searchBtn.textContent = "Loading...";
+    try {
+      await fetchFinancialData(ticker, source);
+    } catch (err) {
+      console.error("Error fetching data:", err
