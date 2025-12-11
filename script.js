@@ -1,9 +1,6 @@
 // ----- CONFIG -----
-const AV_API_KEY = "NW3UXNYOJGUSJCR2"; // Alpha Vantage
+const AV_API_KEY = "NW3UXNYOJGUSJCR2";
 const AV_BASE = "https://www.alphavantage.co/query";
-
-const FMP_API_KEY = "MQ2qInX7K7T26UMDJA2R9Q43zHccjTDn"; // Financial Modeling Prep
-const FMP_BASE = "https://financialmodelingprep.com/api/v3";
 
 // ---------- Utility helpers ----------
 function parseNumber(value) {
@@ -28,7 +25,7 @@ function setCompanyName(name) {
   el.textContent = `Company: ${name || "-"}`;
 }
 
-// ---------- Alpha Vantage helpers ----------[web:75]
+// ---------- Alpha Vantage helpers ----------
 async function avFetch(functionName, symbol) {
   const url = `${AV_BASE}?function=${encodeURIComponent(
     functionName
@@ -38,9 +35,6 @@ async function avFetch(functionName, symbol) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Alpha Vantage HTTP ${res.status}`);
   const json = await res.json();
-  if (json["Information"] || json["Note"] || json["Error Message"]) {
-    console.warn("Alpha Vantage message:", json);
-  }
   return json;
 }
 
@@ -64,44 +58,7 @@ async function avOverview(symbol) {
   return json;
 }
 
-// ---------- Financial Modeling Prep helpers ----------[web:94][web:96]
-async function fmpFetch(path) {
-  const url = `${FMP_BASE}/${path}${
-    path.includes("?") ? "&" : "?"
-  }apikey=${encodeURIComponent(FMP_API_KEY)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`FMP HTTP ${res.status}`);
-  return res.json();
-}
-
-async function fmpProfile(symbol) {
-  // /profile/{symbol} returns basic info including companyName.[web:96]
-  const json = await fmpFetch(`profile/${encodeURIComponent(symbol)}`);
-  return Array.isArray(json) && json.length ? json[0] : null;
-}
-
-async function fmpIncome(symbol) {
-  // /income-statement/{symbol}?limit=5&period=annual.[web:96]
-  return fmpFetch(
-    `income-statement/${encodeURIComponent(symbol)}?limit=5&period=annual`
-  );
-}
-
-async function fmpBalance(symbol) {
-  return fmpFetch(
-    `balance-sheet-statement/${encodeURIComponent(
-      symbol
-    )}?limit=5&period=annual`
-  );
-}
-
-async function fmpCash(symbol) {
-  return fmpFetch(
-    `cash-flow-statement/${encodeURIComponent(symbol)}?limit=5&period=annual`
-  );
-}
-
-// ---------- Common mapping into our 5-year structure ----------
+// ---------- Mapping ----------
 function clearRowDataset() {
   getFinancialRows().forEach((r) => {
     delete r.dataset.filled;
@@ -137,7 +94,7 @@ function mapCombinedToTable(combined) {
   });
 }
 
-// ---------- Fetch & fill: Alpha Vantage ----------
+// ---------- Fetch & fill from Alpha Vantage ----------
 async function fetchFromAlphaVantage(symbol) {
   const [incomeReports, balanceReports, cashReports, overview] =
     await Promise.all([
@@ -220,93 +177,9 @@ async function fetchFromAlphaVantage(symbol) {
   mapCombinedToTable(combined);
 }
 
-// ---------- Fetch & fill: Financial Modeling Prep ----------
-async function fetchFromFMP(symbol) {
-  const [profile, incomeReports, balanceReports, cashReports] = await Promise.all(
-    [fmpProfile(symbol), fmpIncome(symbol), fmpBalance(symbol), fmpCash(symbol)]
-  );
-
-  if (profile && profile.companyName) {
-    setCompanyName(profile.companyName);
-  } else {
-    setCompanyName(symbol);
-  }
-
-  if (
-    !Array.isArray(incomeReports) &&
-    !Array.isArray(balanceReports) &&
-    !Array.isArray(cashReports)
-  ) {
-    throw new Error("No FMP data");
-  }
-
-  const yearsMap = new Map();
-
-  function ensureYear(year) {
-    if (!yearsMap.has(year)) yearsMap.set(year, { year });
-    return yearsMap.get(year);
-  }
-
-  // FMP income statement has "date" and fields like revenue, ebitda, netIncome.[web:95][web:96]
-  (incomeReports || []).slice(0, 5).forEach((r) => {
-    const year = r.date?.slice(0, 4);
-    if (!year) return;
-    const y = ensureYear(year);
-    y.revenue = parseNumber(r.revenue);
-    y.ebitda = parseNumber(r.ebitda);
-    y.pat = parseNumber(r.netIncome);
-  });
-
-  (balanceReports || []).slice(0, 5).forEach((r) => {
-    const year = r.date?.slice(0, 4);
-    if (!year) return;
-    const y = ensureYear(year);
-    y.equity = parseNumber(r.totalStockholdersEquity ?? r.totalShareholderEquity);
-    const shortDebt = parseNumber(r.shortTermDebt);
-    const longDebt = parseNumber(r.longTermDebt);
-    const totalDebt = [shortDebt, longDebt]
-      .filter((v) => !isNaN(v))
-      .reduce((a, b) => a + b, 0);
-    y.debt = isNaN(totalDebt) ? parseNumber(r.totalDebt) : totalDebt;
-    y.ar = parseNumber(r.netReceivables ?? r.accountReceivables);
-    y.inventory = parseNumber(r.inventory);
-    y.cash = parseNumber(r.cashAndCashEquivalents);
-    const invSec = parseNumber(r.shortTermInvestments);
-    const longInv = parseNumber(r.longTermInvestments);
-    const adv = [invSec, longInv].filter((v) => !isNaN(v)).reduce((a, b) => a + b, 0);
-    y.invAdv = isNaN(adv) ? undefined : adv;
-    y.payables = parseNumber(r.accountPayables);
-  });
-
-  (cashReports || []).slice(0, 5).forEach((r) => {
-    const year = r.date?.slice(0, 4);
-    if (!year) return;
-    const y = ensureYear(year);
-    y.ocf = parseNumber(r.netCashProvidedByOperatingActivities);
-    const capex = parseNumber(r.capitalExpenditure);
-    if (!isNaN(y.ocf) && !isNaN(capex)) {
-      y.fcf = y.ocf - capex;
-    }
-    y.dividend = parseNumber(r.dividendsPaid);
-  });
-
-  const combined = Array.from(yearsMap.values())
-    .filter((y) => !!y.year)
-    .sort((a, b) => a.year - b.year)
-    .slice(-5);
-
-  mapCombinedToTable(combined);
-}
-
-// ---------- Unified entry ----------
-async function fetchFinancialData(symbol, provider) {
-  if (provider === "alphavantage") {
-    await fetchFromAlphaVantage(symbol);
-  } else if (provider === "fmp") {
-    await fetchFromFMP(symbol);
-  } else {
-    throw new Error("Unknown provider");
-  }
+// Unified entry – for now always Alpha Vantage
+async function fetchFinancialData(symbol) {
+  await fetchFromAlphaVantage(symbol);
 }
 
 // ---------- Metrics ----------
@@ -851,20 +724,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const exportCsvBtn = document.getElementById("exportCsvBtn");
   const exportPdfBtn = document.getElementById("exportPdfBtn");
   const tickerInput = document.getElementById("ticker");
-  const providerSelect = document.getElementById("providerSelect");
 
   searchBtn.addEventListener("click", async () => {
     const ticker = tickerInput.value.trim();
-    const provider = providerSelect.value;
     if (!ticker) return;
     searchBtn.disabled = true;
     searchBtn.textContent = "Loading...";
     try {
-      await fetchFinancialData(ticker, provider);
+      await fetchFinancialData(ticker);
     } catch (err) {
       console.error("Error fetching data:", err);
       alert(
-        "Unable to fetch financial data. Check symbol, API limits, or provider selection, or fill the table manually."
+        "Unable to fetch financial data. Check symbol or Alpha Vantage rate limits, or fill the table manually."
       );
     } finally {
       searchBtn.disabled = false;
@@ -887,8 +758,8 @@ document.addEventListener("DOMContentLoaded", () => {
   exportCsvBtn.addEventListener("click", exportCSV);
   exportPdfBtn.addEventListener("click", exportPDF);
 
-  // Optional: initial fetch using Alpha Vantage for AAPL
-  fetchFinancialData("AAPL", "alphavantage").catch(() => {
+  // Initial load sample
+  fetchFinancialData("AAPL").catch(() => {
     setCompanyName("AAPL");
   });
 });
