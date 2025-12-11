@@ -1,11 +1,15 @@
 // ----- CONFIG -----
-const AV_API_KEY = "NW3UXNYOJGUSJCR2";
+const AV_API_KEY = "NW3UXNYOJGUSJCR2"; // your Alpha Vantage key
 const AV_BASE = "https://www.alphavantage.co/query";
 
 // ---------- Utility helpers ----------
 function parseNumber(value) {
   if (value === null || value === undefined) return NaN;
-  const n = parseFloat(String(value).replace(/,/g, "").trim());
+  const n = parseFloat(
+    String(value)
+      .replace(/,/g, "")
+      .trim()
+  );
   return isNaN(n) ? NaN : n;
 }
 
@@ -20,56 +24,130 @@ function getFinancialRows() {
   return Array.from(tbody.querySelectorAll("tr"));
 }
 
-function setCompanyName(name) {
-  const el = document.getElementById("companyName");
-  el.textContent = `Company: ${name || "-"}`;
-}
-
-// ---------- Alpha Vantage helpers ----------
-async function avFetch(functionName, symbol) {
+// ---------- Alpha Vantage fetch helpers ----------
+// Each returns the ARRAY of annual reports, newest first, as per docs.[web:70][web:79]
+async function fetchAV(functionName, symbol) {
   const url = `${AV_BASE}?function=${encodeURIComponent(
     functionName
   )}&symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(
     AV_API_KEY
   )}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Alpha Vantage HTTP ${res.status}`);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
   const json = await res.json();
+  if (json["Information"] || json["Note"] || json["Error Message"]) {
+    console.warn("Alpha Vantage message:", json);
+  }
   return json;
 }
 
-async function avIncome(symbol) {
-  const json = await avFetch("INCOME_STATEMENT", symbol);
+async function fetchIncomeStatement(symbol) {
+  const json = await fetchAV("INCOME_STATEMENT", symbol);
   return json.annualReports || [];
 }
 
-async function avBalance(symbol) {
-  const json = await avFetch("BALANCE_SHEET", symbol);
+async function fetchBalanceSheet(symbol) {
+  const json = await fetchAV("BALANCE_SHEET", symbol);
   return json.annualReports || [];
 }
 
-async function avCash(symbol) {
-  const json = await avFetch("CASH_FLOW", symbol);
+async function fetchCashFlow(symbol) {
+  const json = await fetchAV("CASH_FLOW", symbol);
   return json.annualReports || [];
 }
 
-async function avOverview(symbol) {
-  const json = await avFetch("OVERVIEW", symbol);
-  return json;
-}
+// ---------- Data fetch / auto-fill from Alpha Vantage ----------
+async function fetchFinancialData(symbol) {
+  // Fetch all three statements in parallel.[web:70][web:79]
+  const [incomeReports, balanceReports, cashReports] = await Promise.all([
+    fetchIncomeStatement(symbol),
+    fetchBalanceSheet(symbol),
+    fetchCashFlow(symbol)
+  ]);
 
-// ---------- Mapping ----------
-function clearRowDataset() {
-  getFinancialRows().forEach((r) => {
-    delete r.dataset.filled;
+  if (!incomeReports.length && !balanceReports.length && !cashReports.length) {
+    throw new Error("No financial data returned from Alpha Vantage");
+  }
+
+  // Alpha Vantage returns latest first; take up to 5 years.
+  const yearsMap = new Map();
+
+  // Helper to ensure an object per fiscal year
+  function ensureYear(year) {
+    if (!yearsMap.has(year)) {
+      yearsMap.set(year, { year });
+    }
+    return yearsMap.get(year);
+  }
+
+  // Income statement: revenue, EBITDA approximation, net income.[web:70]
+  incomeReports.slice(0, 5).forEach((r) => {
+    const year = r.fiscalDateEnding?.slice(0, 4);
+    if (!year) return;
+    const y = ensureYear(year);
+    y.revenue = parseNumber(r.totalRevenue);
+    // EBITDA approximation: operatingIncome + depreciation + amortization if available.
+    const operatingIncome = parseNumber(r.operatingIncome);
+    const depreciation = parseNumber(r.depreciationAndAmortization);
+    if (!isNaN(operatingIncome) && !isNaN(depreciation)) {
+      y.ebitda = operatingIncome + depreciation;
+    } else {
+      y.ebitda = operatingIncome; // fallback
+    }
+    y.pat = parseNumber(r.netIncome); // Net income as PAT
   });
-}
 
-function mapCombinedToTable(combined) {
-  clearRowDataset();
+  // Balance sheet: equity, debt, AR, inventory, cash, payables, investments/advances.[web:70][web:82]
+  balanceReports.slice(0, 5).forEach((r) => {
+    const year = r.fiscalDateEnding?.slice(0, 4);
+    if (!year) return;
+    const y = ensureYear(year);
+    // Shareholder equity (total stockholder equity)
+    y.equity = parseNumber(r.totalShareholderEquity);
+    // Short-term + long-term debt
+    const shortDebt = parseNumber(r.shortTermDebt);
+    const longDebt = parseNumber(r.longTermDebtNoncurrent);
+    const totalDebt = [shortDebt, longDebt]
+      .filter((v) => !isNaN(v))
+      .reduce((a, b) => a + b, 0);
+    y.debt = isNaN(totalDebt) ? parseNumber(r.totalLiabilities) : totalDebt;
+    y.ar = parseNumber(r.currentNetReceivables);
+    y.inventory = parseNumber(r.inventory);
+    y.cash = parseNumber(r.cashAndCashEquivalentsAtCarryingValue);
+    // Investments / advances (very rough proxy)
+    const invSec = parseNumber(r.shortTermInvestments);
+    const longInv = parseNumber(r.longTermInvestments);
+    const adv = [invSec, longInv].filter((v) => !isNaN(v)).reduce((a, b) => a + b, 0);
+    y.invAdv = isNaN(adv) ? undefined : adv;
+    // Trade payables
+    y.payables = parseNumber(r.currentAccountsPayable);
+  });
+
+  // Cash flow: OCF, FCF (OCF - capex), dividends.[web:70][web:79]
+  cashReports.slice(0, 5).forEach((r) => {
+    const year = r.fiscalDateEnding?.slice(0, 4);
+    if (!year) return;
+    const y = ensureYear(year);
+    y.ocf = parseNumber(r.operatingCashflow);
+    const capex = parseNumber(r.capitalExpenditures);
+    if (!isNaN(y.ocf) && !isNaN(capex)) {
+      y.fcf = y.ocf - capex;
+    }
+    y.dividend = parseNumber(r.dividendPayout);
+  });
+
+  // Convert to array and sort by fiscal year ascending (older → newer).
+  const combined = Array.from(yearsMap.values())
+    .filter((y) => !!y.year)
+    .sort((a, b) => a.year - b.year)
+    .slice(-5); // last 5
+
+  // Map into your FY21–FY25 rows by closest year.
   const rows = getFinancialRows();
-
   combined.forEach((y) => {
+    // find row whose data-year matches, or best-effort match
     let targetRow = rows.find((r) => r.dataset.year === y.year);
     if (!targetRow) {
       targetRow = rows.find((r) => !r.dataset.filled);
@@ -78,6 +156,8 @@ function mapCombinedToTable(combined) {
 
     targetRow.dataset.filled = "1";
 
+    // col indexes: 1=Revenue,2=EBITDA,3=PAT,4=OCF,5=FCF,6=AR,7=Cash,8=Equity,
+    // 9=Debt,10=Inv/Adv,11=Div,12=Inventory,13=Payables
     setCell(targetRow, 1, y.revenue ?? "");
     setCell(targetRow, 2, y.ebitda ?? "");
     setCell(targetRow, 3, y.pat ?? "");
@@ -92,94 +172,10 @@ function mapCombinedToTable(combined) {
     setCell(targetRow, 12, y.inventory ?? "");
     setCell(targetRow, 13, y.payables ?? "");
   });
-}
 
-// ---------- Fetch & fill from Alpha Vantage ----------
-async function fetchFromAlphaVantage(symbol) {
-  const [incomeReports, balanceReports, cashReports, overview] =
-    await Promise.all([
-      avIncome(symbol),
-      avBalance(symbol),
-      avCash(symbol),
-      avOverview(symbol)
-    ]);
-
-  if (overview && overview.Name) {
-    setCompanyName(overview.Name);
-  } else {
-    setCompanyName(symbol);
+  if (!combined.length) {
+    throw new Error("Unable to map Alpha Vantage data into 5-year view");
   }
-
-  if (!incomeReports.length && !balanceReports.length && !cashReports.length) {
-    throw new Error("No Alpha Vantage data");
-  }
-
-  const yearsMap = new Map();
-
-  function ensureYear(year) {
-    if (!yearsMap.has(year)) yearsMap.set(year, { year });
-    return yearsMap.get(year);
-  }
-
-  incomeReports.slice(0, 5).forEach((r) => {
-    const year = r.fiscalDateEnding?.slice(0, 4);
-    if (!year) return;
-    const y = ensureYear(year);
-    y.revenue = parseNumber(r.totalRevenue);
-    const operatingIncome = parseNumber(r.operatingIncome);
-    const depreciation = parseNumber(r.depreciationAndAmortization);
-    if (!isNaN(operatingIncome) && !isNaN(depreciation)) {
-      y.ebitda = operatingIncome + depreciation;
-    } else {
-      y.ebitda = operatingIncome;
-    }
-    y.pat = parseNumber(r.netIncome);
-  });
-
-  balanceReports.slice(0, 5).forEach((r) => {
-    const year = r.fiscalDateEnding?.slice(0, 4);
-    if (!year) return;
-    const y = ensureYear(year);
-    y.equity = parseNumber(r.totalShareholderEquity);
-    const shortDebt = parseNumber(r.shortTermDebt);
-    const longDebt = parseNumber(r.longTermDebtNoncurrent);
-    const totalDebt = [shortDebt, longDebt]
-      .filter((v) => !isNaN(v))
-      .reduce((a, b) => a + b, 0);
-    y.debt = isNaN(totalDebt) ? parseNumber(r.totalLiabilities) : totalDebt;
-    y.ar = parseNumber(r.currentNetReceivables);
-    y.inventory = parseNumber(r.inventory);
-    y.cash = parseNumber(r.cashAndCashEquivalentsAtCarryingValue);
-    const invSec = parseNumber(r.shortTermInvestments);
-    const longInv = parseNumber(r.longTermInvestments);
-    const adv = [invSec, longInv].filter((v) => !isNaN(v)).reduce((a, b) => a + b, 0);
-    y.invAdv = isNaN(adv) ? undefined : adv;
-    y.payables = parseNumber(r.currentAccountsPayable);
-  });
-
-  cashReports.slice(0, 5).forEach((r) => {
-    const year = r.fiscalDateEnding?.slice(0, 4);
-    if (!year) return;
-    const y = ensureYear(year);
-    y.ocf = parseNumber(r.operatingCashflow);
-    const capex = parseNumber(r.capitalExpenditures);
-    if (!isNaN(y.ocf) && !isNaN(capex)) {
-      y.fcf = y.ocf - capex;
-    }
-    y.dividend = parseNumber(r.dividendPayout);
-  });
-
-  const combined = Array.from(yearsMap.values())
-    .filter((y) => !!y.year)
-    .sort((a, b) => a.year - b.year)
-    .slice(-5);
-
-  mapCombinedToTable(combined);
-}
-
-// Unified entry – for now always Alpha Vantage
-async function fetchFinancialData(symbol) {
-  await fetchFromAlphaVantage(symbol);
 }
 
 // ---------- Metrics ----------
@@ -496,7 +492,9 @@ function generateCharts() {
       },
       options: {
         responsive: true,
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false }
+        },
         scales: {
           x: { stacked: true },
           y: {
@@ -520,7 +518,9 @@ function generateCharts() {
   }
 
   const labels = data.map((r) => r.label);
-  const revSeries = data.map((r) => (!isNaN(r.revenue) ? r.revenue : null));
+  const revSeries = data.map((r) =>
+    !isNaN(r.revenue) ? r.revenue : null
+  );
   const ocfSeries = data.map((r) => (!isNaN(r.ocf) ? r.ocf : null));
 
   revOcfChart = new Chart(ctxRevOcf, {
@@ -573,8 +573,12 @@ function generateCharts() {
       ? "Operating cash flow broadly tracks revenue, suggesting reasonable earnings quality over the 5-year period."
       : "Operating cash flow lags revenue growth, indicating potential working capital build-up or non-cash earnings.";
 
-  const equitySeries = data.map((r) => (!isNaN(r.equity) ? r.equity : null));
-  const cashSeries = data.map((r) => (!isNaN(r.cash) ? r.cash : null));
+  const equitySeries = data.map((r) =>
+    !isNaN(r.equity) ? r.equity : null
+  );
+  const cashSeries = data.map((r) =>
+    !isNaN(r.cash) ? r.cash : null
+  );
 
   equityCashChart = new Chart(ctxEquityCash, {
     type: "bar",
@@ -735,7 +739,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error("Error fetching data:", err);
       alert(
-        "Unable to fetch financial data. Check symbol or Alpha Vantage rate limits, or fill the table manually."
+        "Unable to fetch financial data from Alpha Vantage. Please check the symbol or API limits, or fill the table manually."
       );
     } finally {
       searchBtn.disabled = false;
@@ -758,8 +762,8 @@ document.addEventListener("DOMContentLoaded", () => {
   exportCsvBtn.addEventListener("click", exportCSV);
   exportPdfBtn.addEventListener("click", exportPDF);
 
-  // Initial load sample
-  fetchFinancialData("AAPL").catch(() => {
-    setCompanyName("AAPL");
+  // Optional: attempt an initial fetch for sample ticker
+  fetchFinancialData("IBM").catch(() => {
+    // ignore; user can search
   });
 });

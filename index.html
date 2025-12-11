@@ -5,26 +5,17 @@
   <title>5-Year Financial Correlation Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="light">
   <header class="app-header">
     <h1>5-Year Financial Correlation Dashboard</h1>
     <div class="header-controls">
-      <div class="left-controls">
-        <div class="ticker-input">
-          <label for="ticker">Enter Ticker Symbol</label>
-          <input type="text" id="ticker" value="AAPL" />
-          <label for="providerSelect">Data Source</label>
-          <select id="providerSelect">
-            <option value="alphavantage" selected>Alpha Vantage</option>
-            <option value="fmp">Financial Modeling Prep (disabled)</option>
-          </select>
-          <button id="searchBtn">Search</button>
-        </div>
-        <div class="company-info">
-          <span id="companyName">Company: -</span>
-        </div>
+      <div class="ticker-input">
+        <label for="ticker">Enter Ticker Symbol</label>
+        <input type="text" id="ticker" value="NEWGEN" />
+        <button id="searchBtn">Search</button>
       </div>
       <div class="mode-toggle">
         <span>Dark Mode</span>
